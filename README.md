@@ -18,6 +18,9 @@
   <a href="https://www.paypal.me/GrandTetraSoftware">
 	<img src="https://img.shields.io/badge/Donate-PayPal-blue.svg?style=flat-square">
   </a>
+  <a href="https://gitter.im/CSharpRapidOpenWidgets?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge">
+	<img src="https://badges.gitter.im/CSharpRapidOpenWidgets.svg">
+  </a>
 </p>
 </h1>
 
@@ -36,7 +39,16 @@ For API documentation and usage, please refer to the [Cairo](https://www.cairogr
   </a>
 </p>
 
-#### Current status:
+## Performance comparison
+
+<p align="center">
+  <a href="https://github.com/jpbruyere/vgperf/blob/master/vgperf.png">
+	<kbd><img src="https://raw.githubusercontent.com/jpbruyere/vgperf/master/vgperf.png" height="300"></kbd>
+  </a>
+   <br>major libs perf comparison</br>
+</p>
+
+## Current status:
 
 - Fill (stencil even-odd, non-zero with ear clipping).
 - Stroke.
@@ -48,7 +60,7 @@ For API documentation and usage, please refer to the [Cairo](https://www.cairogr
 - Image loading and writing with [stb lib](https://github.com/nothings/stb)
 - Test includes svg rendering with [nanoSVG](https://github.com/memononen/nanosvg)
 
-### Requirements:
+## Requirements:
 
 - [CMake](https://cmake.org/): version > 12.
 - [Vulkan](https://www.khronos.org/vulkan/)
@@ -61,11 +73,11 @@ For API documentation and usage, please refer to the [Cairo](https://www.cairogr
 
 if `glslc` or `xxd` are not present, a precompiled version of the shaders is stored in the git tree.
 
-### Building
+## Building
 
 ```bash
 #fetch sources from github
-git clone --recursive https://github.com/jpbruyere/vkvg.git    
+git clone --recursive https://github.com/jpbruyere/vkvg.git
 cd vkvg
 # Create build directory
 mkdir build
@@ -77,11 +89,29 @@ make
 
 A [detailed tutorial](doc/windows_build_tutorial.md) is available for Windows.
 
-### To Do
+## Running tests
+
+Append the `-h` option to see available command line parameters.
+
+## Contributing
+
+See the [contribution guide](https://github.com/jpbruyere/vkvg/blob/master/CONTRIBUTING.md) for more information.
+
+Join us on [gitter](https://gitter.im/CSharpRapidOpenWidgets) for any question.
+
+## Change log
+
+* v0.2.0
+	- radial gradients.
+	- better stroke joins handling.
+	- png saved in srgb format.
+	- doxygen cmake target and style
+
+## To Do
 
 - [x] Use Scissor where possible.
 - [x] Improve stroke algorithms.
-- [ ] Radial gradients.
+- [x] Radial gradients.
 - [x] Dashed lines.
 - [ ] Operators.
 - [x] Optimize vulkan memory allocations by sub-allocating from a single shared memory chunk per type.
@@ -89,6 +119,6 @@ A [detailed tutorial](doc/windows_build_tutorial.md) is available for Windows.
 - [x] Test SDF font rendering.
 - [x] Avoid line joins inside curves and arc.
 - [ ] Structured unit testing.
-- [ ] Perf and memory checks.
+- [x] Perf and memory checks.
 - [ ] Code clean and comment.
 - [ ] Documentations.

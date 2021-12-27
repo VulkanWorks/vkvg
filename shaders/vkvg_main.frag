@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Jean-Philippe Bruyère <jp_bruyere@hotmail.com>
+ * Copyright (c) 2018-2021 Jean-Philippe Bruyère <jp_bruyere@hotmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -23,20 +23,21 @@
 
 #extension GL_ARB_separate_shader_objects	: enable
 #extension GL_ARB_shading_language_420pack	: enable
+#extension GL_EXT_scalar_block_layout		: require
 
 layout (set=0, binding = 0) uniform sampler2DArray fontMap;
 layout (set=1, binding = 0) uniform sampler2D		source;
-layout (set=2, binding = 0) uniform _uboGrad {
-	vec4    cp[3];
+layout (std430, set=2, binding = 0) uniform _uboGrad {
 	vec4	colors[16];
-	vec4	stops[16];
+	float	stops[16];
+	vec4    cp[2];
 	uint	count;
 }uboGrad;
 
-layout (location = 0) in vec3	inFontUV;		//if it is a text drawing, inFontUV.z hold fontMap layer
-layout (location = 1) in vec4	inSrc;			//source bounds or color depending on pattern type
-layout (location = 2) in flat int inPatType;	//pattern type
-layout (location = 3) in mat3x2 inMat;
+layout (location = 0) in vec3		inFontUV;	//if it is a text drawing, inFontUV.z hold fontMap layer
+layout (location = 1) in vec4		inSrc;		//source bounds or color depending on pattern type
+layout (location = 2) in flat int	inPatType;	//pattern type
+layout (location = 3) in mat3x2		inMat;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -52,11 +53,8 @@ layout (constant_id = 0) const int NUM_SAMPLES = 8;
 
 void main()
 {
-	vec4 c = vec4(0);
+	vec4 c = inSrc;
 	switch(inPatType){
-	case SOLID:
-		c = inSrc;
-		break;
 	case SURFACE:
 		vec2 p = (gl_FragCoord.xy - inSrc.xy);
 		vec2 uv = vec2(
@@ -67,19 +65,66 @@ void main()
 		c = texture (source, uv / inSrc.zw);
 		break;
 	case LINEAR:
-		//credit to Nikita Rokotyan for linear grad
-		float  alpha = atan( -uboGrad.cp[1].y + uboGrad.cp[0].y, uboGrad.cp[1].x - uboGrad.cp[0].x );
-		float  gradientStartPosRotatedX = uboGrad.cp[0].x*cos(alpha) - uboGrad.cp[0].y*sin(alpha);
-		float  gradientEndPosRotatedX   = uboGrad.cp[1].x*cos(alpha) - uboGrad.cp[1].y*sin(alpha);
-		float  d = gradientEndPosRotatedX - gradientStartPosRotatedX;
+		float dist = 1;
+		vec2 p0 = uboGrad.cp[0].xy / inSrc.xy;
+		vec2 p1 = uboGrad.cp[0].zw / inSrc.xy;
+		p = gl_FragCoord.xy / inSrc.xy;
 
-		float y = gl_FragCoord.y;//inSrc.y - gl_FragCoord.y;
-		float x = gl_FragCoord.x;
-		float xLocRotated = x*cos( alpha ) - y*sin( alpha );
+		float l = length (p1 - p0);
+		vec2 u = normalize (p1 - p0);
 
-		c = mix(uboGrad.colors[0], uboGrad.colors[1], smoothstep( gradientStartPosRotatedX + uboGrad.stops[0].r*d, gradientStartPosRotatedX + uboGrad.stops[1].r*d, xLocRotated ) );
+		if (u.y == 0)
+			if (u.x < 0)
+				dist = -(p.x-p0.x) / l;
+			else
+				dist = (p.x-p0.x) / l;
+		else {
+			float m = -u.x / u.y;
+			float bb = p0.y - m * p0.x;
+			dist =((p.y - m * p.x - bb) / sqrt (1 + m * m)) / l;
+			if (u.y < 0)
+				dist = - dist;
+		}
+
+		c = mix(uboGrad.colors[0], uboGrad.colors[1], smoothstep(uboGrad.stops[0], uboGrad.stops[1], dist));
 		for ( int i=1; i<uboGrad.count-1; ++i )
-			c = mix(c, uboGrad.colors[i+1], smoothstep( gradientStartPosRotatedX + uboGrad.stops[i].r*d, gradientStartPosRotatedX + uboGrad.stops[i+1].r*d, xLocRotated ) );
+			c = mix(c, uboGrad.colors[i+1], smoothstep(uboGrad.stops[i], uboGrad.stops[i+1], dist));
+		break;
+	case RADIAL:
+		p = gl_FragCoord.xy / inSrc.xy;
+
+		vec2 c0 = uboGrad.cp[0].xy / inSrc.xy;
+		vec2 c1 = uboGrad.cp[1].xy / inSrc.xy;
+		float r0 = uboGrad.cp[0].z / inSrc.x;
+		float r1 = uboGrad.cp[1].z / inSrc.x;
+
+		/// APPLY FOCUS MODIFIER
+		//project a point on the circle such that it passes through the focus and through the coord,
+		//and then get the distance of the focus from that point.
+		//that is the effective gradient length
+		float gradLength = 1.0;
+		vec2 diff =c0 - c1;
+		vec2 rayDir = normalize(p - c0);
+		float a = dot(rayDir, rayDir);
+		float b = 2.0 * dot(rayDir, diff);
+		float cc = dot(diff, diff) - r1 * r1;
+		float disc = b * b - 4.0 * a * cc;
+		if (disc >= 0.0)
+		{
+			float t = (-b + sqrt(abs(disc))) / (2.0 * a);
+			vec2 projection = c0 + rayDir * t;
+			gradLength = distance(projection, c0)-r0;
+		}
+		else
+		{
+			//gradient is undefined for this coordinate
+		}
+
+		/// OUTPUT
+		float grad = (distance(p, c0)-r0) / gradLength ;
+		c = mix (uboGrad.colors[0], uboGrad.colors[1], smoothstep(uboGrad.stops[0],uboGrad.stops[1], grad));
+		for (int i=2; i < uboGrad.count; i++ )
+			c = mix(c, uboGrad.colors[i], smoothstep(uboGrad.stops[i-1],uboGrad.stops[i], grad));
 		break;
 	}
 

@@ -27,18 +27,19 @@
 #include "vkh.h"
 
 typedef struct _vkvg_pattern_t {
-    vkvg_pattern_type_t type;
-    vkvg_extend_t       extend;
-    vkvg_filter_t       filter;
-    uint32_t            references;
-    void*               data;
+	vkvg_pattern_type_t type;
+	vkvg_extend_t		extend;
+	vkvg_filter_t		filter;
+	void*				data;
+	uint32_t			references;
+	vkvg_status_t		status;
 }vkvg_pattern_t;
 
 typedef struct _vkvg_gradient_t {
-    vec4            cp[3];//two first are normal cp, third are radiuses for radial
-    vkvg_color_t    colors[16];
-    vec4            stops[16];
-    uint32_t        count;
+	vkvg_color_t	colors[16];
+	float			stops[16];
+	vec4			cp[2];
+	uint32_t		count;
 }vkvg_gradient_t;
 
 #endif

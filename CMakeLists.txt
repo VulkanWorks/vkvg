@@ -3,8 +3,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
 SET(LANG "CXX")
 SET(CMAKE_CXX_STANDARD 11)
 
-#PROJECT(vkvg VERSION 0.1.1 DESCRIPTION "Vulkan Vector Graphic" LANGUAGES ${LANG})
-PROJECT(vkvg VERSION 0.1.1 DESCRIPTION "Vulkan Vector Graphic")
+PROJECT(vkvg VERSION 0.2.0 DESCRIPTION "Vulkan Vector Graphic")
 
 ADD_COMPILE_DEFINITIONS(
 	"VKVG_VERSION_MAJOR=${vkvg_VERSION_MAJOR}"
@@ -20,7 +19,7 @@ INCLUDE(CMakeDependentOption)
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 IF(NOT CMAKE_BUILD_TYPE)
-  SET(CMAKE_BUILD_TYPE Debug)
+  SET(CMAKE_BUILD_TYPE Release)
 ENDIF()
 
 IF (UNIX)
@@ -35,7 +34,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	OPTION(ENABLE_DBG_UTILS "enable VK_EXT_debug_utils extension" ON)
 	OPTION(ENABLE_WIRED_FILL "enable wired polygon draw to check vertices and primitives" OFF)
 	IF (UNIX)
-		SET(CMAKE_${LANG}_FLAGS "-Wall -Wno-extra -Wno-unknown-pragmas -Wno-missing-braces -Wno-unused-variable")
+		SET(CMAKE_${LANG}_FLAGS "-Wall -Wno-extra -Wno-unknown-pragmas -Wno-missing-braces -Wno-unused-variable -Wno-switch")
 	ELSEIF(MSVC)
 		SET(CMAKE_${LANG}_FLAGS "/TC /W4 /wd4201 /wd4204 /wd4221 /wd4100")#c11 complient
 	ENDIF()
@@ -44,10 +43,20 @@ ELSE()
 	UNSET(ENABLE_DBG_UTILS CACHE)
 	UNSET(ENABLE_WIRED_FILL CACHE)
 	IF (UNIX)
-		SET(CMAKE_${LANG}_FLAGS "-w")
+		SET(CMAKE_${LANG}_FLAGS  "${CMAKE_CXX_FLAGS} -O3 -march=native -w -ansi -pedantic")
 	ELSEIF(MSVC)
-		SET(CMAKE_${LANG}_FLAGS "/TC /W0")
+		SET(CMAKE_${LANG}_FLAGS "${CMAKE_CXX_FLAGS} /O2 /TC /W0")
 	ENDIF()
+ENDIF()
+
+OPTION(ENABLE_PROFILING "compile with the -pg options..." OFF)
+
+IF (ENABLE_PROFILING)
+	ADD_DEFINITIONS(${CMAKE_CXX_FLAGS} "-pg -fno-reorder-functions -fno-inline")
+	ADD_DEFINITIONS(${CMAKE_CXX_FLAGS} "-O1")
+	ADD_DEFINITIONS(${CMAKE_CXX_FLAGS} "-fthread-jumps")
+	ADD_DEFINITIONS(${CMAKE_CXX_FLAGS} "-falign-functions  -falign-jumps")
+	ADD_DEFINITIONS(${CMAKE_CXX_FLAGS} "-falign-loops  -falign-labels")
 ENDIF()
 
 OPTION(VKVG_PREMULT_ALPHA "use premultiplied alpha for internal rendering" ON)
@@ -98,8 +107,11 @@ FIND_PACKAGE(Fontconfig REQUIRED)
 FIND_PACKAGE(HarfBuzz REQUIRED)
 
 FIND_PACKAGE(GLFW3)
+FIND_PACKAGE(Doxygen)
 
 CMAKE_DEPENDENT_OPTION(VKVG_BUILD_TESTS "build tests with glfw" ON "GLFW3_FOUND" OFF)
+
+CMAKE_DEPENDENT_OPTION(VKVG_BUILD_DOCS "build documentation" OFF "DOXYGEN_FOUND" OFF)
 
 #Freetype lcd font filtering
 #CHECK_SYMBOL_EXISTS (FT_CONFIG_OPTION_SUBPIXEL_RENDERING "${FREETYPE_INCLUDE_DIR_freetype2}/freetype/config/ftoption.h" FT_HAS_SUBPIXEL_RENDERING)
@@ -135,7 +147,7 @@ IF(GLSLC AND XXD)
 		ADD_CUSTOM_COMMAND (
 		  OUTPUT ${shader-output}
 		  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/${SHADER_DIR}"
-		  COMMAND ${GLSLC} ${shader-input} -o ${shader-output}
+		  COMMAND ${GLSLC} ${shader-input} -o ${shader-output} --target-env=vulkan1.2
 		  COMMENT "Compiling ${shader-input}"
 		  DEPENDS ${SHADER}
 		  VERBATIM
@@ -143,32 +155,30 @@ IF(GLSLC AND XXD)
 		SET(SHADER_OUTPUTS ${SHADER_OUTPUTS} ${shader-output})
 	ENDFOREACH()
 
-	ADD_CUSTOM_TARGET(BuildShaderHeader ALL DEPENDS ${SHADER_OUTPUTS})
+	ADD_CUSTOM_TARGET(BuildShaders ALL DEPENDS ${SHADER_OUTPUTS})
 
-	ADD_CUSTOM_COMMAND (TARGET BuildShaderHeader
-		POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E remove ${SHADERS_H}
-		VERBATIM
+	ADD_CUSTOM_TARGET(ClearShadersHeader
+		COMMAND ${CMAKE_COMMAND} -E rm -f ${SHADERS_H}
+
+	)
+	ADD_CUSTOM_TARGET(BuildShadersHeader
+		DEPENDS ClearShadersHeader ${SHADER_OUTPUTS}
 	)
 
 	FOREACH(shad_spv ${SHADER_OUTPUTS})
 		GET_FILENAME_COMPONENT(SPV ${shad_spv} NAME)
-		ADD_CUSTOM_COMMAND (TARGET BuildShaderHeader
-			POST_BUILD
+		ADD_CUSTOM_COMMAND (
+			TARGET BuildShadersHeader
 			WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_DIR}
 			COMMAND ${XXD} -i ${SPV} >> ${SHADERS_H}
-			DEPENDS ${SHADERS_H}
 		)
 	ENDFOREACH()
 	SET_SOURCE_FILES_PROPERTIES(${SHADERS_H} PROPERTIES GENERATED 1)
 	#add_definitions( -DDEBUG_VK_PERF=true )
 ENDIF()
 
-IF (BuildShaderHeader)
-	ADD_DEPENDENCIES(${PROJECT_NAME} BuildShaderHeader)
-ENDIF ()
-
 FILE(GLOB VKVG_SRC src/*.c)
+SET (VKVG_PUBLIC_HEADERS "include/vkvg.h;include/vkvg-nsvg.h")
 
 CONFIGURE_FILE(vkvg.pc.in vkvg.pc @ONLY)
 INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/vkvg.pc DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
@@ -178,9 +188,9 @@ FUNCTION (setup_lib LibName)
 			OUTPUT_NAME ${PROJECT_NAME}
 			VERSION ${vkvg_VERSION_MAJOR}.${vkvg_VERSION_MINOR}
 			SOVERSION ${vkvg_VERSION_MAJOR}
-			C_STANDARD 99
+			C_STANDARD 11
 			C_EXTENSIONS OFF
-			PUBLIC_HEADER "include/vkvg.h;include/vkvg-nsvg.h"
+			PUBLIC_HEADER "${VKVG_PUBLIC_HEADERS}"
 	)
 
 	TARGET_INCLUDE_DIRECTORIES(${LibName} PRIVATE
@@ -206,20 +216,79 @@ FUNCTION (setup_lib LibName)
 		PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 ENDFUNCTION ()
 
-ADD_LIBRARY("${PROJECT_NAME}_static" STATIC ${VKVG_SRC} ${SHADERS})
+ADD_LIBRARY("${PROJECT_NAME}_static" STATIC ${VKVG_SRC} ${SHADERS} ${SHADERS_H} )
 target_compile_definitions("${PROJECT_NAME}_static" PUBLIC -DVKVG_STATIC_BUILD)
 SET_PROPERTY(TARGET "${PROJECT_NAME}_static" PROPERTY POSITION_INDEPENDENT_CODE OFF)
 setup_lib ("${PROJECT_NAME}_static")
 
-ADD_LIBRARY("${PROJECT_NAME}_shared" SHARED ${VKVG_SRC} ${SHADERS})
+ADD_LIBRARY("${PROJECT_NAME}_shared" SHARED ${VKVG_SRC} ${SHADERS} ${SHADERS_H})
 SET_PROPERTY(TARGET "${PROJECT_NAME}_shared" PROPERTY POSITION_INDEPENDENT_CODE ON)
 setup_lib ("${PROJECT_NAME}_shared")
+
+
+IF (SHADERS_H)
+	ADD_DEPENDENCIES("${PROJECT_NAME}_shared" BuildShadersHeader)
+	ADD_DEPENDENCIES("${PROJECT_NAME}_static" BuildShadersHeader)
+ENDIF ()
 
 IF (VKVG_BUILD_TESTS)
 	ADD_SUBDIRECTORY(tests)
 ENDIF (VKVG_BUILD_TESTS)
 
+IF (VKVG_BUILD_DOCS)
+	set(DOXYGEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/doc)
+	set(DOXYGEN_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+	set(DOXYGEN_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/doc)
+	set(DOXYGEN_INDEX_FILE ${DOXYGEN_OUTPUT_DIR}/html/index.html)
+
+	set(DOXYFILE_IN ${DOXYGEN_DIR}/Doxygen.in)
+	set(DOXYFILE_OUT ${DOXYGEN_OUTPUT_DIR}/Doxyfile)
+
+	#configure_file(${DOXYGEN_DIR}/dox_layout.xml ${DOXYGEN_OUTPUT_DIR}/dox_layout.xml @ONLY)
+
+	configure_file(${DOXYFILE_IN} ${DOXYFILE_OUT} @ONLY)
+
+	add_custom_target(copy-doc-files ALL
+		COMMAND ${CMAKE_COMMAND} -E copy_directory "${DOXYGEN_DIR}/doxy_theme" ${DOXYGEN_OUTPUT_DIR})
+
+	add_custom_command(OUTPUT ${DOXYGEN_INDEX_FILE}
+					   DEPENDS "${VKVG_PUBLIC_HEADERS}" copy-doc-files
+					   COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_OUT}
+					   MAIN_DEPENDENCY ${DOXYFILE_OUT} ${DOXYFILE_IN}
+					   COMMENT "Generating docs")
+	add_custom_target(doxygen ALL DEPENDS ${DOXYGEN_INDEX_FILE})
+
+	find_package(Sphinx)
+
+	IF (Sphinx_FOUND)
+
+		set(SPHINX_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/doc)
+		set(SPHINX_BUILD ${CMAKE_CURRENT_BINARY_DIR}/doc/sphinx)
+		set(SPHINX_INDEX_FILE ${SPHINX_BUILD}/index.html)
+
+		add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
+						COMMAND
+						${SPHINX_EXECUTABLE} -b html
+						-Dbreathe_projects.VKVG=${DOXYGEN_OUTPUT_DIR}/xml
+						${SPHINX_SOURCE} ${SPHINX_BUILD}
+						WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+						DEPENDS
+								doxygen
+								# Other docs files you want to track should go here (or in some variable)
+								${SPHINX_SOURCE}/index.rst
+								${DOXYGEN_INDEX_FILE}
+						MAIN_DEPENDENCY ${SPHINX_SOURCE}/conf.py
+						COMMENT "Generating documentation with Sphinx")
+
+		add_custom_target(sphinx ALL DEPENDS ${SPHINX_INDEX_FILE})
+	ENDIF ()
+ENDIF (VKVG_BUILD_DOCS)
+
+MESSAGE(STATUS "VKVG_PUBLIC_HEADERS = ${VKVG_PUBLIC_HEADERS}")
+
 MESSAGE(STATUS "VKVG version\t\t= ${vkvg_VERSION_MAJOR}.${vkvg_VERSION_MINOR}.${vkvg_VERSION_PATCH}")
+MESSAGE(STATUS "comp flags\t\t= ${CMAKE_${LANG}_FLAGS}")
+
 IF (VKVG_BUILD_TESTS)
 	MESSAGE(STATUS "Build tests\t\t= true.")
 ELSE ()
@@ -258,6 +327,17 @@ IF (VKVG_LCD_FONT_FILTER)
 ELSE ()
 	MESSAGE(STATUS "Font filtering\t= Grayscale.")
 ENDIF ()
+IF (VKVG_BUILD_DOCS)
+	MESSAGE(STATUS "Build documentation\t= enabled.")
+	IF (Sphinx_FOUND)
+		MESSAGE(STATUS "Sphinx documentation\t= enabled.")
+	ELSE ()
+		MESSAGE(STATUS "Sphinx documentation\t= disabled.")
+	ENDIF ()
+ELSE ()
+	MESSAGE(STATUS "Build documentation\t= disabled.")
+ENDIF ()
+
 
 IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 	INCLUDE(InstallRequiredSystemLibraries)

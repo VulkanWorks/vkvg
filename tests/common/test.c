@@ -149,10 +149,7 @@ void init_test (uint32_t width, uint32_t height){
 
 	bool deferredResolve = false;
 
-	device = vkvg_device_create_multisample(vkh_app_get_inst(e->app), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
-
-	vkvg_device_set_dpy(device, 96, 96);
-
+	device = vkvg_device_create_from_vk_multisample(vkh_app_get_inst(e->app), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
 	surf = vkvg_surface_create(device, width, height);
 
 	vkh_presenter_build_blit_cmd (r, vkvg_surface_get_vk_image(surf), width, height);
@@ -176,17 +173,27 @@ void _print_usage_and_exit () {
 	printf("\t-x width:\tOutput surface width.\n");
 	printf("\t-y height:\tOutput surface height.\n");
 	printf("\t-S num samples:\tOutput surface filter, default is 1.\n");
-	printf("\t-G gpu_type:\tSet prefered GPU type:\n");
-	printf("\t\t\t\t- 0: Other\n");
-	printf("\t\t\t\t- 1: Integrated\n");
-	printf("\t\t\t\t- 2: Discrete\n");
-	printf("\t\t\t\t- 3: Virtual\n");
-	printf("\t\t\t\t- 4: Cpu\n");
+    printf("\t-g gpu_type:\tSet prefered GPU type:\n");
+	printf("\t\t\t - 0: Other\n");
+	printf("\t\t\t - 1: Integrated (second choice)\n");
+	printf("\t\t\t - 2: Discrete (first choice)\n");
+	printf("\t\t\t - 3: Virtual\n");
+	printf("\t\t\t - 4: Cpu\n");
+	printf("\t-l line_width:\tset lines width for stokes.\n");
+	printf("\t-j line_join:\tset line joins for strokes:\n");
+	printf("\t\t\t - m: Mitter(default)\n");
+	printf("\t\t\t - r: Rount\n");
+	printf("\t\t\t - b: Bevel\n");
+	printf("\t-c line_cap:\tset line caps for strokes:\n");
+	printf("\t\t\t - b: Butt (default)\n");
+	printf("\t\t\t - r: Rount\n");
+	printf("\t\t\t - s: Square\n");
+	printf("\t-d:\t\tenable dashes.\n");
 	printf("\t-n index:\tRun only a single test, zero based index.\n");
-	printf("\t-q:\t\tQuiet, don't print measures table head row, usefull for batch tests\n");
-	printf("\t-p:\t\tPrint test details and exit without performing test, usefull to print details in logs\n");
-	printf("\t-vsync:\t\tEnable VSync, disabled by default\n");
-	printf("\t-help:\t\tthis help message.\n");
+	printf("\t-q:\t\tQuiet, don't print measures table head row, usefull for batch tests.\n");
+	printf("\t-p:\t\tPrint test details and exit without performing test, usefull to print details in logs.\n");
+	printf("\t-vsync:\t\tEnable VSync, disabled by default.\n");
+	printf("\t-h:\t\tThis help message.\n");
 	printf("\n");
 	exit(-1);
 }
@@ -198,7 +205,7 @@ void _parse_args (int argc, char* argv[]) {
 		if (strcmp (argv[i], "-p\0") == 0)
 			printTestDetailsAndExit = true;
 		else if (strcmp (argv[i], "-vsync\0") == 0)
-			test_vsync = true;		
+			test_vsync = true;
 		else if (strcmp (argv[i], "-q\0") == 0)
 			quiet = true;
 		else if (strcmp (argv[i], "-i\0") == 0) {
@@ -220,7 +227,7 @@ void _parse_args (int argc, char* argv[]) {
 		}else if (strcmp (argv[i], "-s\0") == 0) {
 			if (argc -1 < ++i)
 				_print_usage_and_exit();
-			test_size = atoi (argv[i]);			
+			test_size = atoi (argv[i]);
 		}else if (strcmp (argv[i], "-S\0") == 0) {
 			if (argc -1 < ++i)
 				_print_usage_and_exit();
@@ -229,48 +236,86 @@ void _parse_args (int argc, char* argv[]) {
 			if (argc -1 < ++i)
 				_print_usage_and_exit();
 			preferedPhysicalDeviceType = (VkPhysicalDeviceType)atoi (argv[i]);
-		}
-		if (printTestDetailsAndExit) {
-			#ifdef DEBUG
-			printf("Debug build\n");
-			#else
-			printf("Release build\n");
-			#endif
-			#ifdef VKVG_USE_RENDERDOC
-			printf("Render doc enabled\n");
-			#endif
-			#ifdef VKVG_USE_VALIDATION
-			printf("Validation enabled\n");
-			#endif
-			printf("surf dims:\t%d x %d\n", test_width, test_height);
-			printf("Samples:\t%d\n", samples);
-			printf("Gpu type:\t");
-			switch (preferedPhysicalDeviceType) {
-			case VK_PHYSICAL_DEVICE_TYPE_OTHER:
-				printf("Other\n");
+		}else if (strcmp (argv[i], "-l\0") == 0) {
+			if (argc -1 < ++i)
+				_print_usage_and_exit();
+			line_width = atoi (argv[i]);
+		}else if (strcmp (argv[i], "-d\0") == 0) {
+			dashes_count = 2;
+		}else if (strcmp (argv[i], "-j\0") == 0) {
+			if (argc -1 < ++i)
+				_print_usage_and_exit();
+			switch (argv[i][0]) {
+			case 'm':
+				line_join = VKVG_LINE_JOIN_MITER;
 				break;
-			case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-				printf("Integrated\n");
+			case 'r':
+				line_join = VKVG_LINE_JOIN_ROUND;
 				break;
-			case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-				printf("Discrete\n");
+			case 'b':
+				line_join = VKVG_LINE_JOIN_BEVEL;
 				break;
-			case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-				printf("Virtual\n");
-				break;
-			case VK_PHYSICAL_DEVICE_TYPE_CPU:
-				printf("CPU\n");
-				break;
+			default:
+				_print_usage_and_exit();
 			}
-
-			#ifdef VKVG_TEST_OFFSCREEN
-			printf("Offscreen:\ttrue\n");
-			#else
-			printf("Offscreen:\tfalse\n");
-			#endif
-			printf("\n");
-			exit(0);
+		}else if (strcmp (argv[i], "-c\0") == 0) {
+			if (argc -1 < ++i)
+				_print_usage_and_exit();
+			switch (argv[i][0]) {
+			case 'b':
+				line_cap = VKVG_LINE_CAP_BUTT;
+				break;
+			case 'r':
+				line_cap = VKVG_LINE_CAP_ROUND;
+				break;
+			case 's':
+				line_cap = VKVG_LINE_CAP_SQUARE;
+				break;
+			default:
+				_print_usage_and_exit();
+			}
 		}
+	}
+	if (printTestDetailsAndExit) {
+		#ifdef DEBUG
+		printf("Debug build\n");
+		#else
+		printf("Release build\n");
+		#endif
+		#ifdef VKVG_USE_RENDERDOC
+		printf("Render doc enabled\n");
+		#endif
+		#ifdef VKVG_USE_VALIDATION
+		printf("Validation enabled\n");
+		#endif
+		printf("surf dims:\t%d x %d\n", test_width, test_height);
+		printf("Samples:\t%d\n", samples);
+		printf("Gpu type:\t");
+		switch (preferedPhysicalDeviceType) {
+		case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+			printf("Other\n");
+			break;
+		case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+			printf("Integrated\n");
+			break;
+		case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+			printf("Discrete\n");
+			break;
+		case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+			printf("Virtual\n");
+			break;
+		case VK_PHYSICAL_DEVICE_TYPE_CPU:
+			printf("CPU\n");
+			break;
+		}
+
+		#ifdef VKVG_TEST_OFFSCREEN
+		printf("Offscreen:\ttrue\n");
+		#else
+		printf("Offscreen:\tfalse\n");
+		#endif
+		printf("\n");
+		exit(0);
 	}
 }
 
@@ -354,7 +399,7 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 	enabledExtsCount++;
 #endif
 
-	VkhApp app = vkh_app_create("vkvgTest", enabledLayersCount, enabledLayers, enabledExtsCount, enabledExts);
+	VkhApp app = vkh_app_create(1, 1, "vkvgTest", enabledLayersCount, enabledLayers, enabledExtsCount, enabledExts);
 #if defined(DEBUG) && defined (VKVG_DBG_UTILS)
 	vkh_app_enable_debug_messenger(app
 								   , VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
@@ -369,11 +414,10 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 	bool deferredResolve = false;
 	VkhPhyInfo* phys = vkh_app_get_phyinfos (app, &phyCount, VK_NULL_HANDLE);
 	VkhPhyInfo pi = 0;
-	for (uint32_t i=0; i<phyCount; i++){
-		pi = phys[i];
-		if (pi->properties.deviceType == preferedPhysicalDeviceType)
-			break;
-	}
+	if (!vkengine_try_get_phyinfo(phys, phyCount, preferedPhysicalDeviceType, &pi))
+		if (!vkengine_try_get_phyinfo(phys, phyCount, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, &pi))
+			if (!vkengine_try_get_phyinfo(phys, phyCount, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, &pi))
+				pi = phys[0];
 
 	uint32_t qCount = 0;
 	float qPriorities[] = {0.0};
@@ -392,8 +436,8 @@ void perform_test_offscreen (void(*testfunc)(void), const char *testName, int ar
 	VkhDevice dev = vkh_device_create(app, pi, &device_info);
 
 
-	device  = vkvg_device_create_multisample(vkh_app_get_inst(app), dev->phy, dev->dev, pi->gQueue, 0, samples, deferredResolve);
-	vkvg_device_set_dpy(device, 96, 96);
+	device  = vkvg_device_create_from_vk_multisample(vkh_app_get_inst(app), dev->phy, dev->dev, pi->gQueue, 0, samples, deferredResolve);
+	//vkvg_device_set_dpy(device, 96, 96);
 
 	vkh_app_free_phyinfos (phyCount, phys);
 
@@ -466,7 +510,7 @@ void perform_test (void(*testfunc)(void), const char *testName, int argc, char* 
 
 	bool deferredResolve = false;
 
-	device  = vkvg_device_create_multisample(vkh_app_get_inst(e->app), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
+	device  = vkvg_device_create_from_vk_multisample(vkh_app_get_inst(e->app), r->dev->phy, r->dev->dev, r->qFam, 0, samples, deferredResolve);
 
 	vkvg_device_set_dpy(device, 96, 96);
 
@@ -517,8 +561,10 @@ void perform_test (void(*testfunc)(void), const char *testName, int argc, char* 
 			vkQueuePresentKHR(r->queue, &present);
 		}
 #else
-		if (!paused)
-			testfunc();
+		if (paused)
+			continue;
+
+		testfunc();
 
 		if (deferredResolve)
 			vkvg_multisample_surface_resolve(surf);
@@ -531,9 +577,6 @@ void perform_test (void(*testfunc)(void), const char *testName, int argc, char* 
 			continue;
 		}
 #endif
-
-		if (paused)
-			continue;
 
 		stop_time = get_tick();
 		run_time = stop_time - start_time;
@@ -575,10 +618,11 @@ void perform_test (void(*testfunc)(void), const char *testName, int argc, char* 
 vkvg_fill_rule_t	fill_rule	= VKVG_FILL_RULE_NON_ZERO;
 vkvg_line_cap_t		line_cap	= VKVG_LINE_CAP_BUTT;
 vkvg_line_join_t	line_join	= VKVG_LINE_JOIN_MITER;
-float		dashes[]	= {20.0f, 10.0f};
+float		dashes[]	= {10.0f, 6.0f};
+//float		dashes[]	= {0.0f, 10.0f};
 uint32_t	dashes_count= 0;
 float		dash_offset	= 0;
-float		line_width	= 10.f;
+float		line_width	= 2.f;
 
 VkvgContext _initCtx() {
 	VkvgContext ctx = vkvg_create(surf);

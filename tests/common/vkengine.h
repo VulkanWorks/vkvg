@@ -50,6 +50,7 @@ typedef struct _vk_engine_t {
 
 vk_engine_t*   vkengine_create  (VkPhysicalDeviceType preferedGPU, VkPresentModeKHR presentMode, uint32_t width, uint32_t height);
 void vkengine_dump_available_layers   ();
+bool vkengine_try_get_phyinfo (VkhPhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkhPhyInfo* phy);
 void vkengine_destroy       (VkEngine e);
 bool vkengine_should_close  (VkEngine e);
 void vkengine_close         (VkEngine e);
@@ -67,4 +68,6 @@ void vkengine_set_mouse_but_callback    (VkEngine e, GLFWmousebuttonfun onMouseB
 void vkengine_set_cursor_pos_callback   (VkEngine e, GLFWcursorposfun onMouseMove);
 void vkengine_set_scroll_callback       (VkEngine e, GLFWscrollfun onScroll);
 void vkengine_set_char_callback         (VkEngine e, GLFWcharfun onChar);
+
+void vkengine_wait_idle					(VkEngine e);
 #endif

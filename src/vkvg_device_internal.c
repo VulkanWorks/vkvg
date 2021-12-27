@@ -30,24 +30,37 @@
 
 uint8_t vkvg_log_level = VKVG_LOG_ERR;
 
-PFN_vkCmdBindPipeline           CmdBindPipeline;
-PFN_vkCmdBindDescriptorSets     CmdBindDescriptorSets;
-PFN_vkCmdBindIndexBuffer        CmdBindIndexBuffer;
-PFN_vkCmdBindVertexBuffers      CmdBindVertexBuffers;
+PFN_vkCmdBindPipeline			CmdBindPipeline;
+PFN_vkCmdBindDescriptorSets		CmdBindDescriptorSets;
+PFN_vkCmdBindIndexBuffer		CmdBindIndexBuffer;
+PFN_vkCmdBindVertexBuffers		CmdBindVertexBuffers;
 
-PFN_vkCmdDrawIndexed            CmdDrawIndexed;
-PFN_vkCmdDraw                   CmdDraw;
+PFN_vkCmdDrawIndexed			CmdDrawIndexed;
+PFN_vkCmdDraw					CmdDraw;
 
-PFN_vkCmdSetStencilCompareMask  CmdSetStencilCompareMask;
-PFN_vkCmdSetStencilReference    CmdSetStencilReference;
-PFN_vkCmdSetStencilWriteMask    CmdSetStencilWriteMask;
-PFN_vkCmdBeginRenderPass        CmdBeginRenderPass;
-PFN_vkCmdEndRenderPass          CmdEndRenderPass;
-PFN_vkCmdSetViewport            CmdSetViewport;
-PFN_vkCmdSetScissor             CmdSetScissor;
+PFN_vkCmdSetStencilCompareMask	CmdSetStencilCompareMask;
+PFN_vkCmdSetStencilReference	CmdSetStencilReference;
+PFN_vkCmdSetStencilWriteMask	CmdSetStencilWriteMask;
+PFN_vkCmdBeginRenderPass		CmdBeginRenderPass;
+PFN_vkCmdEndRenderPass			CmdEndRenderPass;
+PFN_vkCmdSetViewport			CmdSetViewport;
+PFN_vkCmdSetScissor				CmdSetScissor;
 
-PFN_vkCmdPushConstants          CmdPushConstants;
+PFN_vkCmdPushConstants			CmdPushConstants;
 
+PFN_vkWaitForFences				WaitForFences;
+PFN_vkResetFences				ResetFences;
+PFN_vkResetCommandBuffer		ResetCommandBuffer;
+
+bool _try_get_phyinfo (VkhPhyInfo* phys, uint32_t phyCount, VkPhysicalDeviceType gpuType, VkhPhyInfo* phy) {
+	for (uint32_t i=0; i<phyCount; i++){
+		if (vkh_phyinfo_get_properties(phys[i]).deviceType == gpuType) {
+			 *phy = phys[i];
+			 return true;
+		}
+	}
+	return false;
+}
 void _flush_all_contexes (VkvgDevice dev){
 	VkvgContext ctx = dev->lastCtx;
 	while (ctx != NULL){
@@ -86,12 +99,12 @@ VkRenderPass _createRenderPassNoResolve(VkvgDevice dev, VkAttachmentLoadOp loadO
 					.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
 
 	VkAttachmentDescription attachments[] = {attColor,attDS};
-	VkAttachmentReference colorRef  = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-	VkAttachmentReference dsRef     = {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+	VkAttachmentReference colorRef	= {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+	VkAttachmentReference dsRef		= {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
 
 	VkSubpassDescription subpassDescription = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-						.colorAttachmentCount   = 1,
-						.pColorAttachments      = &colorRef,
+						.colorAttachmentCount	= 1,
+						.pColorAttachments		= &colorRef,
 						.pDepthStencilAttachment= &dsRef};
 
 	VkSubpassDependency dependencies[] =
@@ -150,13 +163,13 @@ VkRenderPass _createRenderPassMS(VkvgDevice dev, VkAttachmentLoadOp loadOp, VkAt
 
 	VkAttachmentDescription attachments[] = {attColorResolve,attDS,attColor};
 	VkAttachmentReference resolveRef= {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-	VkAttachmentReference dsRef     = {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
-	VkAttachmentReference colorRef  = {2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+	VkAttachmentReference dsRef		= {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+	VkAttachmentReference colorRef	= {2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
 
 	VkSubpassDescription subpassDescription = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-						.colorAttachmentCount   = 1,
-						.pColorAttachments      = &colorRef,
-						.pResolveAttachments    = &resolveRef,
+						.colorAttachmentCount	= 1,
+						.pColorAttachments		= &colorRef,
+						.pResolveAttachments	= &resolveRef,
 						.pDepthStencilAttachment= &dsRef};
 
 	VkSubpassDependency dependencies[] =
@@ -366,7 +379,7 @@ void _setupPipelines(VkvgDevice dev)
 	VK_CHECK_RESULT(vkCreateShaderModule(dev->vkDev, &createInfo, NULL, &modFragWired));
 
 	shaderStages[1].module = modFragWired;
-	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 	rasterizationState.polygonMode = VK_POLYGON_MODE_LINE;
 	VK_CHECK_RESULT(vkCreateGraphicsPipelines(dev->vkDev, dev->pipelineCache, 1, &pipelineCreateInfo, NULL, &dev->pipelineWired));
 	vkDestroyShaderModule(dev->vkDev, modFragWired, NULL);
@@ -424,20 +437,23 @@ bool _init_function_pointers (VkvgDevice dev) {
 	}
 	vkh_device_init_debug_utils ((VkhDevice)dev);
 #endif
-	CmdBindPipeline         = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindPipeline);
-	CmdBindDescriptorSets   = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindDescriptorSets);
-	CmdBindIndexBuffer      = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindIndexBuffer);
-	CmdBindVertexBuffers    = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindVertexBuffers);
-	CmdDrawIndexed          = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDrawIndexed);
-	CmdDraw                 = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDraw);
+	CmdBindPipeline			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindPipeline);
+	CmdBindDescriptorSets	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindDescriptorSets);
+	CmdBindIndexBuffer		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindIndexBuffer);
+	CmdBindVertexBuffers	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBindVertexBuffers);
+	CmdDrawIndexed			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDrawIndexed);
+	CmdDraw					= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdDraw);
 	CmdSetStencilCompareMask= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilCompareMask);
-	CmdSetStencilReference  = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilReference);
-	CmdSetStencilWriteMask  = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilWriteMask);
-	CmdBeginRenderPass      = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBeginRenderPass);
-	CmdEndRenderPass        = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdEndRenderPass);
-	CmdSetViewport          = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetViewport);
-	CmdSetScissor           = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetScissor);
-	CmdPushConstants        = GetVkProcAddress(dev->vkDev, dev->instance, vkCmdPushConstants);	
+	CmdSetStencilReference	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilReference);
+	CmdSetStencilWriteMask	= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetStencilWriteMask);
+	CmdBeginRenderPass		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdBeginRenderPass);
+	CmdEndRenderPass		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdEndRenderPass);
+	CmdSetViewport			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetViewport);
+	CmdSetScissor			= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdSetScissor);
+	CmdPushConstants		= GetVkProcAddress(dev->vkDev, dev->instance, vkCmdPushConstants);
+	WaitForFences			= GetVkProcAddress(dev->vkDev, dev->instance, vkWaitForFences);
+	ResetFences				= GetVkProcAddress(dev->vkDev, dev->instance, vkResetFences);
+	ResetCommandBuffer		= GetVkProcAddress(dev->vkDev, dev->instance, vkResetCommandBuffer);
 	return true;
 }
 
@@ -492,17 +508,34 @@ void _check_best_image_tiling (VkvgDevice dev, VkFormat format) {
 	LOG(VKVG_LOG_ERR, "vkvg create device failed: image format not supported: %d\n", format);
 }
 
+static VkExtensionProperties* instExtProps;
+static uint32_t instExtCount;
+bool _instance_extension_supported (const char* instanceName) {
+	for (uint32_t i=0; i<instExtCount; i++) {
+		if (!strcmp(instExtProps[i].extensionName, instanceName))
+			return true;
+	}
+	return false;
+}
+void _instance_extensions_check_init () {
+	VK_CHECK_RESULT(vkEnumerateInstanceExtensionProperties(NULL, &instExtCount, NULL));
+	instExtProps =(VkExtensionProperties*)malloc(instExtCount * sizeof(VkExtensionProperties));
+	VK_CHECK_RESULT(vkEnumerateInstanceExtensionProperties(NULL, &instExtCount, instExtProps));
+}
+void _instance_extensions_check_release () {
+	free (instExtProps);
+}
 void _dump_image_format_properties (VkvgDevice dev, VkFormat format) {
 	/*VkImageFormatProperties imgProps;
 	VK_CHECK_RESULT(vkGetPhysicalDeviceImageFormatProperties(dev->phy,
 															 format, VK_IMAGE_TYPE_2D, VKVG_TILING,
 															 VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 															 0, &imgProps));
-	printf ("tiling           = %d\n", VKVG_TILING);
-	printf ("max extend       = (%d, %d, %d)\n", imgProps.maxExtent.width, imgProps.maxExtent.height, imgProps.maxExtent.depth);
-	printf ("max mip levels   = %d\n", imgProps.maxMipLevels);
+	printf ("tiling			  = %d\n", VKVG_TILING);
+	printf ("max extend		  = (%d, %d, %d)\n", imgProps.maxExtent.width, imgProps.maxExtent.height, imgProps.maxExtent.depth);
+	printf ("max mip levels	  = %d\n", imgProps.maxMipLevels);
 	printf ("max array layers = %d\n", imgProps.maxArrayLayers);
-	printf ("sample counts    = ");
+	printf ("sample counts	  = ");
 	if (imgProps.sampleCounts & VK_SAMPLE_COUNT_1_BIT)
 		printf ("1,");
 	if (imgProps.sampleCounts & VK_SAMPLE_COUNT_2_BIT)
